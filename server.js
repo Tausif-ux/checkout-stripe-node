@@ -5,6 +5,13 @@ const { resolve } = require('path');
 require('dotenv').config({ path: './.env' });
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+// //Proxy Server
+// app.use((req, res, next) => {
+//   res.header('Access-Control-Allow-Origin', '*');
+//   next();
+// });
+
+
 app.use(express.static(process.env.STATIC_DIR));
 app.use(
   express.json({
@@ -24,12 +31,12 @@ app.get('/', (req, res) => {
 });
 
 app.get('/config', async (req, res) => {
-  const price = await stripe.prices.retrieve(process.env.PRICE);
+  // const price = await stripe.prices.retrieve(process.env.PRICE);
 
   res.send({
     publicKey: process.env.STRIPE_PUBLISHABLE_KEY,
-    unitAmount: price.unit_amount,
-    currency: price.currency,
+    // unitAmount: price.unit_amount,
+    // currency: price.currency,
   });
 });
 
@@ -40,36 +47,71 @@ app.get('/checkout-session', async (req, res) => {
   res.send(session);
 });
 
+/////////Session-create/////////////
+
 app.post('/create-checkout-session', async (req, res) => {
   const domainURL = process.env.DOMAIN;
 
-  const { quantity, locale } = req.body;
+  const { sizeAndQty, addressRequired, locale } = req.body;
+  //Find Total Quantity
+  const orderedItems = [
+    {
+      name: 'Tshirt',
+      currency: 'inr',
+      amount: 350,
+      quantity: 1,
+    },
+    {
+      name: 'shirt',
+      currency: 'inr',
+      amount: 300,
+      quantity: 1,
+    }
+  ];
+  // for ( let proKey in sizeAndQty ) {
+  //     orderedItems.push(
+  //       {
+  //         name: 'Tshirt',
+  //         currency: 'inr',
+  //         amount: 350,
+  //         quantity: sizeAndQty[ proKey ].quantity,
+  //       }
+  //     );
+  // }
+  const shippingAddressCollection = null;
+  if( addressRequired ){
+    shippingAddressCollection = {
+      allowed_countries: ['IN'],
+    }
+  }
+  console.log(orderedItems, sizeAndQty, addressRequired, shippingAddressCollection);
   // Create new Checkout Session for the order
   // Other optional params include:
   // [billing_address_collection] - to display billing address details on the page
   // [customer] - if you have an existing Stripe Customer ID
   // [customer_email] - lets you prefill the email input in the Checkout page
   // For full details see https://stripe.com/docs/api/checkout/sessions/create
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: process.env.PAYMENT_METHODS.split(', '),
-    mode: 'payment',
-    locale: locale,
-    line_items: [
-      {
-        price: process.env.PRICE,
-        quantity: quantity
-      },
-    ],
-    // ?session_id={CHECKOUT_SESSION_ID} means the redirect will have the session ID set as a query param
-    success_url: `${domainURL}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${domainURL}/canceled.html`,
-  }).catch( error => console.log(error.message) );
-  console.log( 'session fetched on Server: ', session );
+  const session = await stripe.checkout.sessions.create(
+    {
+      payment_method_types: process.env.PAYMENT_METHODS.split(', '),
+      // billing_address_collection: 'addressRequired',
+      shipping_address_collection: shippingAddressCollection,
+      mode: 'payment',
+      locale: locale,
+      line_items: orderedItems,
+      success_url: `${domainURL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${domainURL}/canceled.html`,
+      // ?session_id={CHECKOUT_SESSION_ID} means the redirect will have the session ID set as a query param
+
+    }
+  ).catch(error => console.log(error.message));
+  // console.log('session fetched on Server: ', session);
 
   res.send({
     sessionId: session.id,
   });
 });
+
 
 // Webhook handler for asynchronous events.
 app.post('/webhook', async (req, res) => {
